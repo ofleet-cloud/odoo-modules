@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<data>
+  <template id="assets_backend" inherit_id="web.assets_backend">
+    <xpath expr=".">
+      <link rel="stylesheet" type="text/scss" href="/saas_fleet/static/src/scss/saas_ribbon.scss" />
+    </xpath>
+  </template>
+</data>
