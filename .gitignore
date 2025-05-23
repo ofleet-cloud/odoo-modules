@@ -1,0 +1,61 @@
+# Project build files ---------------------------
+Debug*/
+build*/
+Testing*/
+image_*/
+output/
+
+# VS Code related files -------------------------
+.vscode/
+
+# JetBrains IDEs --------------------------------
+.idea/
+
+# MS Office related files -----------------------
+~*
+
+# Unix related files ----------------------------
+*.swp
+
+# macOS files -----------------------------------
+.DS_Store
+
+# Binary files ----------------------------------
+*.dll
+*.dylib
+*.so
+*.slo
+*.exe
+*.out
+*.app
+
+# Compiled Object files -------------------------
+*.lo
+*.o
+*.obj
+
+# Compiled Static libraries ---------------------
+*.lai
+*.la
+*.a
+*.lib
+
+# Precompiled Headers ---------------------------
+*.gch
+*.pch
+
+# Logs ------------------------------------------
+Logs
+*.log
+logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Please adapt this .gitignore file according
+# to the type of project you are working on.
+#
+# Add new entries below,
+# and try to separate them into sections
+# like the above examples.
