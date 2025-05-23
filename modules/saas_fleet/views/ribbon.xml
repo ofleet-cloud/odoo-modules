@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="saas_ribbon" name="SaaS Ribbon" inherit_id="web.layout" active="True">
+        <xpath expr="//body" position="inside">
+            <div t-if="env.saas_tag">
+                <span class="o_saas_ribbon" t-raw="env.saas_tag" />
+            </div>
+        </xpath>
+    </template>
+</odoo>
