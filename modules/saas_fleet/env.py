@@ -1,7 +1,8 @@
 from odoo.api import Environment
-from odoo.tools import config, lazy_property
+from odoo.tools import config
+import functools
 
-@lazy_property
+@functools.cached_property
 def saas_tag(self):
   return config.get("odoo_tag", False)
 

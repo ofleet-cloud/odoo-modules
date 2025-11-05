@@ -4,7 +4,7 @@
 
     'summary': """
         Allows you to use an aditional filestore with AWS S3.""",
-    'version': '18.0.1.0.0',
+    'version': '19.0.1.0.0',
 
     'description': """
         The basis of the module is to allow the exact same structure of the odoo filestore

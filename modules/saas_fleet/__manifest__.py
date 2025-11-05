@@ -2,7 +2,7 @@
     "name": "SaaS Fleet",
     "description": "Adds the Odoo Fleet features to Odoo.",
     "summary": "SaaS Fleet features",
-    "version": "18.0.1.0.0",
+    "version": "19.0.1.0.0",
     "category": "Technical",
     "author": "Log'in Line",
     "mainteners": ["Mathieu Deschamps"],
