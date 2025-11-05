@@ -1,9 +1,8 @@
 from odoo.api import Environment
 from odoo.tools import config
-import functools
+from functools import cached_property
 
-@functools.cached_property
-def saas_tag(self):
-  return config.get("odoo_tag", False)
+class SaasTag:
+  value = cached_property(lambda self: config.get("odoo_tag", False))
 
-setattr(Environment, "saas_tag", saas_tag)
+setattr(Environment, "saas_tag", SaasTag().value)
