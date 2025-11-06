@@ -94,7 +94,7 @@ def get_s3_bucket():
 def get_disk_first():
     global _global_disk_first
     if _global_disk_first is None:
-        _global_disk_first = tools.config.get('s3_disk_first', False)
+        _global_disk_first = tools.config.get('s3_disk_first', 'false') == 'true'
     return _global_disk_first
 
 def get_cache_domain():
