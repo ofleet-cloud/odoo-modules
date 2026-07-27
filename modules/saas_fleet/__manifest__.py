@@ -1,19 +1,18 @@
 {
     "name": "SaaS Fleet",
-    "description": "Adds the Odoo Fleet features to Odoo.",
     "summary": "SaaS Fleet features",
-    "version": "19.0.1.0.0",
+    "version": "19.0.2.0.0",
     "category": "Technical",
-    "author": "Log'in Line",
-    "mainteners": ["Mathieu Deschamps"],
-    "website": "https://www.loginline.com",
+    "author": "Apik",
+    "mainteners": ["royaurelien"],
+    "website": "https://apik.cloud",
     "depends": [
         "base",
         "web",
     ],
     "external_dependencies": {},
     "data": [
-        "views/ribbon.xml",    
+        "views/ribbon.xml",
     ],
     "assets": {
         "web.assets_backend": [
