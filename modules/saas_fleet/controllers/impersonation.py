@@ -34,7 +34,7 @@ class ImpersonateController(Home):
 
         uid = request.session.uid = int(request.params["uid"])
 
-        request.env.registry.clear_cache()
+        request.env.registry.clear_all_caches()
         request.session.session_token = security.compute_session_token(
             request.session, request.env
         )
