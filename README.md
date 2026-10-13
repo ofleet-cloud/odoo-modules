@@ -2,7 +2,7 @@
 
 This repository contains the necessary additional odoo modules needed in docker images designed to be deployed on ofleet for every odoo version.
 
-## Odoo 20 branch (`odoo-20`)
+## Odoo 20 branch (`v20`)
 
 This branch targets **Odoo 20.0** (Python 3.12+). It is not compatible with
 Odoo 19 or earlier: Odoo 20 turned `odoo.http` into a package and replaced the
