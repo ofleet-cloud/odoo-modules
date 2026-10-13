@@ -2,6 +2,28 @@
 # @author Nicolas Seinlet
 # Copyright (c) ACSONE SA 2022
 # @author Stéphane Bidoul
+# Ported to Odoo 20 by Log'in Line
+"""PostgreSQL backed HTTP session store for Odoo 20.
+
+Odoo 20 replaced the werkzeug-derived ``odoo.tools._vendor.sessions`` with a
+standalone :class:`odoo.http.session.SessionStore` (filesystem based) and the
+store instance is obtained everywhere through the module level function
+:func:`odoo.http.session.session_store`, which is ``functools.cache`` d.
+
+That function is imported *by name* in several places (``odoo.http.router``,
+``odoo.http.dispatcher``, ``odoo.addons.base.models.ir_http``,
+``odoo.addons.base.models.res_device``, ``odoo.addons.web.controllers.utils``
+...). Rebinding ``odoo.http.session.session_store`` would therefore only patch
+the callers importing it after this module is loaded, and any site missed
+would silently keep a filesystem store next to the database one.
+
+Instead, we leave ``session_store()`` untouched and patch the *name* it
+instantiates: ``odoo.http.session.SessionStore``. The cached function resolves
+that name in its module globals at call time, so every caller, present or
+future, receives the same store. We then clear the ``functools`` cache so a
+store created before this module was imported (for instance by a test run)
+is rebuilt through the replacement.
+"""
 import functools
 import json
 import logging
@@ -10,13 +32,18 @@ import os
 import psycopg2
 
 import odoo
-from odoo import http
-from odoo.tools._vendor import sessions
+from odoo.http import session as http_session
+from odoo.http.session import (
+    SESSION_LIFETIME,
+    Session,
+    SessionStore,
+    _session_identifier_re,
+)
 
 _logger = logging.getLogger(__name__)
 
 lock = None
-if odoo.evented:
+if getattr(odoo, "evented", False):
     import gevent.lock
 
     lock = gevent.lock.RLock()
@@ -27,6 +54,7 @@ elif odoo.tools.config["workers"] == 0:
 
 
 def with_lock(func):
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:
             if lock is not None:
@@ -40,6 +68,7 @@ def with_lock(func):
 
 
 def with_cursor(func):
+    @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
         tries = 0
         while True:
@@ -59,9 +88,21 @@ def with_cursor(func):
     return wrapper
 
 
-class PGSessionStore(sessions.SessionStore):
-    def __init__(self, uri, session_class=None):
-        super().__init__(session_class)
+class PGSessionStore(SessionStore):
+    """Session store keeping the sessions in a PostgreSQL ``http_sessions`` table.
+
+    Only the storage primitives (``save``, ``delete``, ``get``, ``vacuum``,
+    ``get_missing_session_identifiers`` and ``delete_from_identifiers``) are
+    reimplemented. ``generate_key``, ``is_valid_session_id``, ``new``,
+    ``rotate`` and ``delete_old_sessions`` are storage agnostic and inherited
+    from Odoo's :class:`~odoo.http.session.SessionStore`.
+    """
+
+    def __init__(self, uri, session_cls=Session):
+        # Do not call SessionStore.__init__: it would create the filesystem
+        # session directory, which this store never uses.
+        self.path = None
+        self.session_cls = session_cls
         self._uri = uri
         self._cr = None
         self._open_connection()
@@ -127,25 +168,39 @@ class PGSessionStore(sessions.SessionStore):
 
     @with_lock
     @with_cursor
-    def get(self, sid):
-        self._cr.execute("SELECT payload FROM http_sessions WHERE sid=%s", (sid,))
-        try:
-            data = json.loads(self._cr.fetchone()[0])
-        except Exception:
+    def get(self, sid, *, keep_sid=False):
+        """Get a session for the sid.
+
+        Same contract as :meth:`odoo.http.session.SessionStore.get`:
+
+        * an invalid sid yields a brand new session (new sid);
+        * a valid sid without a row yields an empty session keeping the sid
+          when ``keep_sid`` is set, a brand new session otherwise;
+        * an unreadable payload yields an empty session keeping the sid.
+        """
+        if not self.is_valid_session_id(sid):
             return self.new()
 
-        return self.session_class(data, sid, False)
+        self._cr.execute("SELECT payload FROM http_sessions WHERE sid=%s", (sid,))
+        row = self._cr.fetchone()
+        if row is None:
+            if keep_sid:
+                _logger.debug("Session %s not found in db. Use empty session.", sid[:8])
+                return self.session_cls({}, sid, new=False)
+            _logger.debug("Session %s not found in db. Use new session.", sid[:8])
+            return self.new()
 
-    # Odoo's FileSystemSessionStore has a few additional methods that are independent
-    # of the actual storage backend. We reuse them here.
-    rotate = http.FilesystemSessionStore.rotate
-    generate_key = http.FilesystemSessionStore.generate_key
-    is_valid_key = http.FilesystemSessionStore.is_valid_key
-    delete_old_sessions = http.FilesystemSessionStore.delete_old_sessions
+        try:
+            data = json.loads(row[0])
+        except ValueError:
+            _logger.debug("Could not load session data. Use empty session.", exc_info=True)
+            return self.session_cls({}, sid, new=False)
+
+        return self.session_cls(data, sid, new=False)
 
     @with_lock
     @with_cursor
-    def vacuum(self, max_lifetime=http.SESSION_LIFETIME):
+    def vacuum(self, max_lifetime=SESSION_LIFETIME):
         self._cr.execute(
             "DELETE FROM http_sessions "
             "WHERE now() at time zone 'UTC' - write_date > %s",
@@ -154,12 +209,12 @@ class PGSessionStore(sessions.SessionStore):
 
     @with_lock
     @with_cursor
-    def get_missing_session_identifiers(self, identifiers: list[str]) -> set[str]:
+    def get_missing_session_identifiers(self, identifiers):
         """
-        :param identifiers: session identifiers whose file existence must be checked
+        :param identifiers: session identifiers whose existence must be checked
                             identifiers are a part session sid (first 42 chars)
         :type identifiers: iterable
-        :return: the identifiers which are not present on the filesystem
+        :return: the identifiers which are not present in the database
         :rtype: set
 
         Note 1:
@@ -184,33 +239,45 @@ class PGSessionStore(sessions.SessionStore):
 
     @with_lock
     @with_cursor
-    def delete_from_identifiers(self, identifiers: list[str]) -> None:
+    def delete_from_identifiers(self, identifiers):
+        if isinstance(identifiers, str):
+            raise ValueError(
+                "Identifier format incorrect, "
+                "did you pass in a string instead of a list?"
+            )
         for identifier in identifiers:
-            if not http._session_identifier_re.match(identifier):
-                raise ValueError(
-                    "Identifier format incorrect, "
-                    "did you pass in a string instead of a list?"
-                )
+            # Same guard as the filesystem store: never delete sessions that do
+            # not match a full identifier, so that a forged ``res.device.log``
+            # cannot be used to wipe sessions of another database.
+            if not _session_identifier_re.match(identifier):
+                _logger.warning("Ignoring invalid session identifier %r", identifier)
+                continue
             self._cr.execute(
                 "DELETE FROM http_sessions WHERE sid LIKE %s||'%%'", (identifier,)
             )
 
 
-_original_session_store = http.root.__class__.session_store
+class SessionStoreSelector(SessionStore):
+    """Stand-in for ``odoo.http.session.SessionStore``.
+
+    Instantiating it returns a :class:`PGSessionStore` when the
+    ``SESSION_DB_URI`` environment variable is set, and a regular filesystem
+    :class:`odoo.http.session.SessionStore` otherwise. Subclassing it still
+    behaves like subclassing the original class.
+    """
+
+    def __new__(cls, /, path=None, session_cls=Session):
+        if cls is not SessionStoreSelector:
+            return super().__new__(cls)
+        session_db_uri = os.environ.get("SESSION_DB_URI")
+        if session_db_uri:
+            _logger.info("HTTP sessions stored in: db")
+            return PGSessionStore(session_db_uri, session_cls=session_cls)
+        return SessionStore(path=path, session_cls=session_cls)
 
 
-@functools.cached_property
-def session_store(self):
-    session_db_uri = os.environ.get("SESSION_DB_URI")
-    if session_db_uri:
-        _logger.debug("HTTP sessions stored in: db")
-        return PGSessionStore(session_db_uri, session_class=http.Session)
-    return _original_session_store.__get__(self, self.__class__)
-
-
-# Monkey patch of standard methods
+# Monkey patch the class instantiated by odoo.http.session.session_store()
 _logger.debug("Monkey patching session store")
-http.root.__class__.session_store = session_store
-http.root.__class__.session_store.__set_name__(http.root.__class__, "session_store")
-# Reset the lazy property cache
-vars(http.root).pop("session_store", None)
+http_session.SessionStore = SessionStoreSelector
+# Drop any store built before this module was imported.
+http_session.session_store.cache_clear()
