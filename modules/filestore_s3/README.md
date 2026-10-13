@@ -1,5 +1,9 @@
 # Odoo AWS S3 module
 
+> **Not available on Odoo 20.** This module is not ported to Odoo 20 and is
+> marked as not installable in this branch. Odoo 19 is the last supported
+> version; use the `v19` branch for it.
+
 The basis of the module is to allow the exact same structure of the odoo filestore inside an S3 bucket. The default behaviour is always to consider the unavailabily of an S3 connection. In all cases it will default to the flesystem. This makes migrating from filestore to S3 seamless. Just install as a server wide module or even in one only database.
         
 After the propper key is loaded then the server will start witing new files to S3,  if available. To migrate just use the aws cli tool and copy all files in filestore to the respective bucket, odoo will give priority to S3 bucket.

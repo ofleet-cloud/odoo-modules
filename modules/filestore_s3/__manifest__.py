@@ -27,6 +27,8 @@
         'python': ['awscli', 'botocore', 'boto3'],
     },
     'data': [],
-    'installable': True,
+    # Object-storage filestores are legacy: this module is not ported to
+    # Odoo 20 (Odoo 19 is the last supported version).
+    'installable': False,
     'post_init_hook': '_post_install_hook',
 }
