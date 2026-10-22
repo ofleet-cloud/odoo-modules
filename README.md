@@ -38,6 +38,19 @@ instantiates (`odoo.http.session.SessionStore`) with a selector returning a
 `PGSessionStore` when `SESSION_DB_URI` is set, and clears the function's cache.
 Every caller, including modules loaded later, therefore shares the same store.
 
+Since build `20.0.20261015`, the bus dispatcher (websocket / longpolling process)
+validates every websocket session through
+`odoo.addons.bus.session_helpers.check_sessions`, which opens the session *file*
+returned by `store.get_session_path()` instead of going through `store.get()`.
+With a database store this raised an uncaught `TypeError` and crashed the
+dispatcher loop. `session_db/bus_session_helpers.py` replaces that function
+with a storage agnostic copy (the change marker comes from
+`PGSessionStore.get_session_stamp()`, the `write_date` of the row) and installs
+it on `bus.session_helpers` and `bus.bus_dispatcher`, through a one-shot import
+hook when `bus` is imported after `session_db`. The copy is pinned to the
+upstream build by the SHA-1 of the upstream function: a WARNING at startup
+means upstream changed and the copy must be re-synchronised.
+
 ### saas_fleet
 
 * `/impersonate?fleet_access_token=...&uid=...` logs the session in as `uid`

@@ -200,6 +200,22 @@ class PGSessionStore(SessionStore):
 
     @with_lock
     @with_cursor
+    def get_session_stamp(self, sid):
+        """Change marker of the stored session, ``None`` when it does not exist.
+
+        Counterpart of the ``(mtime, inode)`` of a session file: ``save`` always
+        refreshes ``write_date``, so a different value means the payload may have
+        changed. Used by the bus websocket session check, see
+        :mod:`odoo.addons.session_db.bus_session_helpers`.
+        """
+        if not self.is_valid_session_id(sid):
+            return None
+        self._cr.execute("SELECT write_date FROM http_sessions WHERE sid=%s", (sid,))
+        row = self._cr.fetchone()
+        return None if row is None else row[0]
+
+    @with_lock
+    @with_cursor
     def vacuum(self, max_lifetime=SESSION_LIFETIME):
         self._cr.execute(
             "DELETE FROM http_sessions "
@@ -281,3 +297,9 @@ _logger.debug("Monkey patching session store")
 http_session.SessionStore = SessionStoreSelector
 # Drop any store built before this module was imported.
 http_session.session_store.cache_clear()
+
+# The bus websocket session check reads session files directly: give it a
+# storage agnostic implementation (see bus_session_helpers).
+from .bus_session_helpers import patch_bus_check_sessions  # noqa: E402
+
+patch_bus_check_sessions()
